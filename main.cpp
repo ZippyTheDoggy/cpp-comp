@@ -1,33 +1,19 @@
 #include <iostream>
 #include <vector>
 #include <any>
+#include <functional>
 
-#include "charops.h"
-#include "arrayops.h"
-#include "is.h"
+#include "./charops.h"
+#include "./arrayops.h"
+#include "./is.h"
+
+#include "./TokenTypes.h"
+
+#include "./combineQueue.h"
 
 #define _DEBUG false
 #define debug(x) if(_DEBUG) std::cout << x << std::endl
 #define debugt(x) std::cout << x << std::endl;
-
-typedef enum {
-  INVALID = 0, NUMBER, IDENTIFIER, STRING,
-  ASSIGNMENT, ADD, SUBTRACT, DIVIDE, ASTERISK,
-
-} TokenType;
-std::string STokenType[] = {
-  "Invalid", "Number", "Identifier", "String",
-  "Assignment", "Add", "Subtract", "Divide", "Asterisk"
-};
-const char* fancy_tt(TokenType tt) {
-  return cc_uppercase(STokenType[tt].c_str());
-}
-
-typedef struct {
-  size_t line;
-  TokenType type;
-  std::string value;
-} TokenData;
 
 bool eol(char* ptr) {
   return (*ptr == '\0') || (ptr == nullptr);
@@ -104,72 +90,56 @@ typedef struct {
     std::function<std::any(std::string)> parse;
 } ASTData;
 
-void combineElements(std::vector<TokenData> tokens) {
-  std::vector<ASTData> asts = {};
-  for(size_t i = 0; i < tokens.size(); i++) {
-    TokenData data = tokens[i];
-    size_t line = data.line;
-    TokenType type = data.type;
-    std::string val = data.value;
+LinkedList<TokenData> combineElements(std::vector<TokenData> tokens) {
+  std::function<TokenData(TokenData, TokenData)> math_divide = [&](TokenData a, TokenData b) {
+    return TokenData {0, TokenType::NUMBER, "hi!"};
+    // return TokenData {a.line, a.type, std::to_string(std::stoi(a.value) / std::stoi(b.value))};
+  };
+
+  LinkedList<TokenData> list(tokens);
+  Linked<TokenData>* pointer = list[0];
+  int pos = 0;
+  while(pointer->next != nullptr) {
+    TokenType type = pointer->item.type;
+    std::string value = pointer->item.value;
     switch(type) {
-      case TokenType::MULTIPLY: {
-        if(!ensure(-1)) {
-          debug("Exited combine MULTIPLY, failed ensure -1");
-          std::cout << "Failed to combine multiply token." << std::endl;
-          exit(EXIT_FAILURE);
-        };
-        if(!ensure(1)) {
-          debug("Exited combine MULTIPLY, failed ensure 1");
-          std::cout << "Failed to combine multiply token." << std::endl;
-          exit(EXIT_FAILURE);
+      case TokenType::DIVIDE: {
+        TokenData left = pointer->last->item;
+        TokenData right = pointer->next->item;
+        if(left.type != TokenType::NUMBER) {
+          std::cout << "Divide on line " << pointer->item.line << " is expecting a LVALUE of type NUMBER, got " << fancy_tt(type) << " instead.\n";
+        } else if(right.type != TokenType::NUMBER) {
+          std::cout << "Divide on line " << pointer->item.line << " is expecting a RVALUE of type NUMBER, got " << fancy_tt(type) << " instead.\n";
+        } else {
+          int lNum = std::stoi(left.value);
+          int rNum = std::stoi(right.value);
+          std::cout << "Expecting combine value " << (lNum / rNum) << std::endl;
+          // list.combine(pos-1, pos+1, math_divide);
+          /*
+          erase(pos-1);
+          erase(pos);
+          erase(pos+1);
+          insert(pos, lnum/rnum);
+          */
+          list.erase(pos-1);
+          list.erase(pos+1);
+          Linked<TokenData>* i = list.insert(pos-1, TokenData {pointer->item.line, pointer->item.type, std::to_string(lNum / rNum)});
+          list.erase(pos);
+          std::cout << "A:" << i->item.value << std::endl;
         }
-        int lvalue = std::stoi(tokens[i-1].value);
-        int rvalue = std::stoi(tokens[i-1].value);
-        asts.push_back({
-          "multiply",
-          std::string(lvalue * rvalue),
-          [&](std::string s) {
-            return std::any_cast<int>(std::stoi(s));
-          }
-        })
       } break;
     }
+    pointer = pointer->next;
+    pos++;
   }
+  return list;
 };
-//
-//
-//
-/* CONSIDERATION ON PROGRAMMING OUTLINE
-  1/2/3 WILL CONFLICT AS BOTH ARE TRYING TO USE 2 AS A NUMBER
-  WILL RESULT IN (1/2) as .5 and (2/3) as .66, resulting in .5/.66 instead of .5/3
-  EITHER MULTIPLE ITERATIONS TAKING IN THE LAST INPUT, STARTING w/ TOKENS, REQUIRES WHOLE
-  REVISION OF WHAT INPUTS THE AST PARSER TAKES,
-
-  OTHER OPTION IS TO ADD AN "EXPRESSION" WHICH IS ANY NUMBER,
-  CAN BE EITHER AST OR TOKEN, AST MUST STORE INDEX OF TOKEN
-  FOR LATER USAGE
-
-  if lvalue.is_expression:
-    lvalue = get_expression(-1, token.index) // get the left expression including index
-  if rvalue.is_expression:
-    rvalue = get_expression(1, token.index); // get the right expression including index
-  1/2/3 takes 1/2 first, turns it into expr/3, recognizes, takes value .5/3
-  returns expression of .5/3
-
-  EXPRESSION IS ANY AST;
-  USAGE CASE FOR STRINGS IS "STR" + "STR"
-  + takes TWO STRINGS RETURNS A STRING WHICH WILL BE WRAPPED BY expression
-  "STR" + "STR" + "STR" WILL BE EXPR + "STR", LVALUE IS EXPR
-*/
-//
-//
-//
 
 int main(int argc, char const *argv[]) {
-
-  std::string code = "4 / 5";
+  std::string code = "3 / 2";
   std::vector<TokenData> lexed = lexer(code);
-  combineElements(code);
+  LinkedList<TokenData> combined = combineElements(lexed);
+  combined.print();
 
   return EXIT_SUCCESS;
 }
